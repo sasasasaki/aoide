@@ -314,9 +314,13 @@ impl Controller {
             Ok(text) => {
                 log::info!("Transcribed: {text}");
                 let (text, glossary) = self.apply_vocab(text, &cfg);
-                let text = match self.caret_context(&cfg) {
-                    Some(ctx) => self.insert_in_context(text, seconds, &ctx, glossary.as_deref(), &cfg),
-                    None => self.maybe_polish(text, seconds, glossary.as_deref(), &cfg),
+                let text = if cfg.translate_to.trim().is_empty() || cfg.polish_api.trim().is_empty() {
+                    match self.caret_context(&cfg) {
+                        Some(ctx) => self.insert_in_context(text, seconds, &ctx, glossary.as_deref(), &cfg),
+                        None => self.maybe_polish(text, seconds, glossary.as_deref(), &cfg),
+                    }
+                } else {
+                    self.translate(text, glossary.as_deref(), &cfg)
                 };
                 if task.canceled() {
                     return;
@@ -436,6 +440,22 @@ impl Controller {
             Ok(_) => text,
             Err(e) => {
                 log::warn!("Polish skipped: {e}");
+                text
+            }
+        }
+    }
+
+    /// 设置了输出语言：不论长短都翻译（短句也要换成目标语言），失败时输出原文
+    fn translate(&self, text: String, glossary: Option<&str>, cfg: &Config) -> String {
+        overlay::set(Mode::Polishing);
+        match llm::translate_text(&text, glossary, cfg) {
+            Ok(t) if !t.is_empty() => {
+                log::info!("Translated ({}): {t}", cfg.translate_to);
+                t
+            }
+            Ok(_) => text,
+            Err(e) => {
+                log::warn!("Translation skipped: {e}");
                 text
             }
         }

@@ -62,6 +62,21 @@ pub const INSERT_PROMPT: &str = r#"你是文字输入助手。用户正在一个
 
 要插入的文字："#;
 
+/// 翻译提示词：设置了输出语言时代替润色 / 插入，把口述内容整理并翻译成目标语言
+const TRANSLATE_PROMPT: &str = r#"你是翻译助手。用户通过语音输入了一段话，可能有停顿、语气词（嗯、啊、那个）、重复、断句。
+
+请把它翻译成{lang}，遵守以下规则：
+1. 先理解原意：去掉语气词和重复，把断裂的半句连成完整的话
+2. 译文要自然地道，像以{lang}为母语的人直接写的；保持原文的语气和礼貌程度
+3. 保持原意，不要添加用户没说的内容
+4. 人名、产品名等专有名词用{lang}的通行写法，没有通行写法的保留原文
+5. 如果原文已经是{lang}，只整理，不翻译
+6. 只输出译文，不要加任何解释、引号或前缀
+
+原文：{text}
+
+译文："#;
+
 /// 词库纠正提示词：识别结果较短、不值得整段润色时，只按词库修正误识别的词
 const CORRECT_PROMPT: &str = r#"下面是一段语音识别结果。请只参考用户词库，修正其中被误识别的词；其他内容（包括标点、语气、措辞）一字不改。没有需要修正的就原样输出。只输出结果本身，不要加任何解释、引号或前缀。
 
@@ -297,6 +312,27 @@ pub fn polish_text(text: &str, glossary: Option<&str>, cfg: &Config) -> Result<S
         return Ok(text.to_string());
     }
     Api::from(cfg)?.call_with(glossary, &prompt_or_default(&cfg.polish_prompt, POLISH_PROMPT).replace("{text}", text))
+}
+
+/// 输出语言代码 → 写进提示词的语言名；不认识的代码原样使用（可以直接填语言名）
+fn language_name(code: &str) -> &str {
+    match code {
+        "en" => "English",
+        "ja" => "日本語",
+        "ko" => "한국어",
+        "zh" => "简体中文",
+        "zh-Hant" => "繁體中文",
+        other => other,
+    }
+}
+
+/// 把转录文本翻译成 cfg.translate_to 指定的语言；调用失败返回 Err，由调用方决定回退
+pub fn translate_text(text: &str, glossary: Option<&str>, cfg: &Config) -> Result<String, String> {
+    if text.trim().is_empty() {
+        return Ok(text.to_string());
+    }
+    let prompt = TRANSLATE_PROMPT.replace("{lang}", language_name(cfg.translate_to.trim())).replace("{text}", text);
+    Api::from(cfg)?.call_with(glossary, &prompt)
 }
 
 /// 根据口述指令修改选中文本

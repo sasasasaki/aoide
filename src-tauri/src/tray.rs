@@ -1,10 +1,12 @@
 //! 托盘图标：灰 = 空闲，红 = 录音中，绿 = 输出完成
 
 use tauri::image::Image;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use crate::i18n::tr;
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter, Manager};
+use std::sync::Arc;
+use crate::controller::Controller;
 
 const TRAY_ID: &str = "main";
 
@@ -52,8 +54,36 @@ pub fn tooltip(hotkey: &str) -> String {
     crate::trf!("Aoide — 按 {hotkey} 开始/停止", "Aoide — press {hotkey} to start/stop")
 }
 
+/// 托盘「翻译成」子菜单的选项：输出语言代码与显示名（空 = 不翻译）
+const TRANSLATE_TARGETS: &[(&str, &str)] = &[("en", "English"), ("ja", "日本語"), ("ko", "한국어"), ("zh", "简体中文"), ("zh-Hant", "繁體中文")];
+
+fn translate_menu(app: &AppHandle) -> tauri::Result<Submenu<tauri::Wry>> {
+    let current = app.try_state::<Arc<Controller>>().map(|c| c.config().translate_to).unwrap_or_default();
+    let off = CheckMenuItem::with_id(app, "translate:", tr("不翻译", "Off"), true, current.is_empty(), None::<&str>)?;
+    let menu = Submenu::with_id_and_items(app, "translate", tr("翻译成", "Translate to"), true, &[&off])?;
+    for (code, name) in TRANSLATE_TARGETS {
+        menu.append(&CheckMenuItem::with_id(app, format!("translate:{code}"), *name, true, current == *code, None::<&str>)?)?;
+    }
+    Ok(menu)
+}
+
+/// 从托盘切换输出语言：存盘、生效，并通知设置页更新显示
+fn set_translate(app: &AppHandle, code: &str) {
+    let ctl = app.state::<Arc<Controller>>();
+    let mut cfg = ctl.config();
+    cfg.translate_to = code.to_string();
+    if let Err(e) = cfg.save() {
+        ctl.notify(&crate::trf!("保存失败：{e}", "Failed to save: {e}"));
+        return;
+    }
+    ctl.apply_config(cfg);
+    refresh_menu(app);
+    let _ = app.emit("translate-changed", code);
+}
+
 fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let open = MenuItem::with_id(app, "settings", tr("打开 Aoide", "Open Aoide"), true, None::<&str>)?;
+    let translate = translate_menu(app)?;
     let quit = MenuItem::with_id(app, "quit", tr("退出", "Quit"), true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
     // 有新版本时，菜单最上面加一项「更新到 x.y.z」
@@ -61,8 +91,8 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         .map(|u| MenuItem::with_id(app, "update", crate::trf!("更新到 {}", "Update to {}", u.version), true, None::<&str>))
         .transpose()?;
     match &update {
-        Some(update) => Menu::with_items(app, &[update, &open, &separator, &quit]),
-        None => Menu::with_items(app, &[&open, &separator, &quit]),
+        Some(update) => Menu::with_items(app, &[update, &open, &translate, &separator, &quit]),
+        None => Menu::with_items(app, &[&open, &translate, &separator, &quit]),
     }
 }
 
@@ -99,7 +129,11 @@ pub fn create(app: &AppHandle, hotkey: &str) -> tauri::Result<()> {
                 log::info!("=== Aoide Ended ===");
                 app.exit(0);
             }
-            _ => {}
+            id => {
+                if let Some(code) = id.strip_prefix("translate:") {
+                    set_translate(app, code);
+                }
+            }
         })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {

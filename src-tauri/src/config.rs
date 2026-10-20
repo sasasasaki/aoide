@@ -42,6 +42,8 @@ pub struct Config {
     pub polish_min_chars: usize,
     /// 录音短于此秒数跳过润色直接输出（润色主要用来整理大段口述，短句不值得花 LLM 的时间）
     pub polish_min_seconds: u32,
+    /// 输出语言：留空按原语言输出；填 en / ja / ko / zh / zh-Hant 等时，用 LLM 把口述内容翻译成该语言再输出
+    pub translate_to: String,
     /// 光标前后已有文字时，用 LLM 把口述内容接进光标处
     pub insert_smart: bool,
     /// 录音短于此秒数时不走 LLM 插入，直接粘贴转写结果
@@ -84,6 +86,7 @@ impl Default for Config {
             polish_no_think: true,
             polish_min_chars: 12,
             polish_min_seconds: 10,
+            translate_to: String::new(),
             insert_smart: true,
             insert_min_seconds: 10,
             insert_min_chars: 12,

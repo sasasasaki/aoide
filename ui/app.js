@@ -394,6 +394,10 @@ function bind() {
   }
   $("vocab-search").addEventListener("input", renderVocab);
   listen("vocab-changed", loadVocab);
+  listen("translate-changed", ({ payload }) => {
+    state.config.translate_to = payload;
+    render();
+  });
 
   $("autostart").addEventListener("input", (e) => {
     state.autostart = e.target.checked;
