@@ -16,6 +16,8 @@ pub enum Mode {
     Recording,
     /// 语音修订录音
     Revising,
+    /// 翻译输入录音
+    Translating,
     /// 录音结束，转写中
     Processing,
     /// LLM 润色 / 修订中
@@ -117,7 +119,7 @@ impl Anim {
     /// 录音时：每 60 ms 把当前音量推入波形（从右往左滚动）；转写中：波浪动画；润色中：高光扫过
     fn update_bars(&mut self) {
         match self.shown_mode {
-            Mode::Recording | Mode::Revising => {
+            Mode::Recording | Mode::Revising | Mode::Translating => {
                 if self.last_shift.elapsed().as_millis() >= 60 {
                     self.last_shift = Instant::now();
                     self.bars.rotate_left(1);
@@ -158,6 +160,7 @@ impl Anim {
         let t = self.start.elapsed().as_secs_f32();
         let (dot, bar) = match self.shown_mode {
             Mode::Revising => ([167, 139, 250], [221, 214, 254]),
+            Mode::Translating => ([45, 212, 191], [204, 251, 241]),
             Mode::Processing => ([96, 205, 255], [186, 230, 253]),
             Mode::Polishing => ([251, 191, 36], [253, 230, 138]),
             _ => ([255, 77, 79], [255, 255, 255]),
@@ -263,12 +266,13 @@ mod tests {
         for (name, mode, t) in [
             ("recording", Mode::Recording, 0.4),
             ("revising", Mode::Revising, 0.4),
+            ("translating", Mode::Translating, 0.4),
             ("transcribing", Mode::Processing, 0.35),
             ("polishing", Mode::Polishing, 0.6),
         ] {
             let mut v = anim(mode, speech, at(t));
             v.update_bars();
-            if matches!(mode, Mode::Recording | Mode::Revising) {
+            if matches!(mode, Mode::Recording | Mode::Revising | Mode::Translating) {
                 v.bars = speech; // 录音态的波形来自麦克风，这里用固定样例
             }
             let path = dir.join(format!("capsule-{name}.png"));

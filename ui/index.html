@@ -48,6 +48,24 @@
           </div>
         </div>
         <div class="card">
+          <span class="ico">&#xE8C1;</span>
+          <div class="text">
+            <div class="title" data-i18n="hk.translate.title">翻译输入</div>
+            <div class="desc" data-i18n="hk.translate.desc">单击开始录音，再单击结束，说完翻译成所选语言再输入；需要在「LLM 润色与修订」里填好 API</div>
+          </div>
+          <div class="control">
+            <span class="keys" data-keys="translate_hotkey"></span>
+            <button class="btn" data-capture="translate_hotkey" data-i18n="btn.change">更改</button>
+            <select data-key="translate_to" data-i18n-aria="hk.translate.to" aria-label="翻译成">
+              <option value="en">English</option>
+              <option value="ja">日本語</option>
+              <option value="ko">한국어</option>
+              <option value="zh">简体中文</option>
+              <option value="zh-Hant">繁體中文</option>
+            </select>
+          </div>
+        </div>
+        <div class="card">
           <span class="ico">&#xE70F;</span>
           <div class="text">
             <div class="title" data-i18n="hk.revise.title">语音修订</div>

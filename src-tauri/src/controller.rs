@@ -171,7 +171,7 @@ impl Controller {
         let (tx, rx) = mpsc::channel();
         hotkeys::install(tx);
         let cfg = self.config();
-        hotkeys::update(&cfg.hotkey, &cfg.revise_hotkey, &cfg.revise_stop_hotkey, &cfg.cancel_hotkey);
+        hotkeys::update(&cfg.hotkey, &cfg.revise_hotkey, &cfg.revise_stop_hotkey, &cfg.cancel_hotkey, &cfg.translate_hotkey);
 
         let me = self.clone();
         thread::spawn(move || {
@@ -183,7 +183,12 @@ impl Controller {
                         if me.rev.lock().unwrap().active {
                             thread::spawn(move || me2.stop_revision());
                         } else {
-                            thread::spawn(move || me2.toggle_recording());
+                            thread::spawn(move || me2.toggle_recording(false));
+                        }
+                    }
+                    HotkeyEvent::Translate => {
+                        if !me.rev.lock().unwrap().active {
+                            thread::spawn(move || me2.toggle_recording(true));
                         }
                     }
                     HotkeyEvent::Revise => {
@@ -231,7 +236,7 @@ impl Controller {
     /// 设置页保存后调用：就地生效，无需重启
     pub fn apply_config(self: &Arc<Self>, new: Config) {
         let old = std::mem::replace(&mut *self.config.write().unwrap(), new.clone());
-        hotkeys::update(&new.hotkey, &new.revise_hotkey, &new.revise_stop_hotkey, &new.cancel_hotkey);
+        hotkeys::update(&new.hotkey, &new.revise_hotkey, &new.revise_stop_hotkey, &new.cancel_hotkey, &new.translate_hotkey);
         if (&old.model, &old.model_dir, &old.device) != (&new.model, &new.model_dir, &new.device) {
             self.transcriber.reset();
             self.preload_model();
@@ -259,8 +264,9 @@ impl Controller {
         }
     }
 
-    // === 普通录音 ===
-    fn toggle_recording(self: &Arc<Self>) {
+    // === 普通录音 / 翻译输入 ===
+    /// translate：这次录音由翻译键开始，说完翻译成 translate_to 再输出。录音中按哪个键都是结束
+    fn toggle_recording(self: &Arc<Self>, translate: bool) {
         let (rec, task) = {
             let mut s = self.rec.lock().unwrap();
             if s.recording {
@@ -276,7 +282,7 @@ impl Controller {
             }
             s.recording = true;
             self.set_tray(TrayState::Recording);
-            overlay::set(Mode::Recording);
+            overlay::set(if translate { Mode::Translating } else { Mode::Recording });
             // 开始音播完才开录：提示音不会被录进去
             sound::play_sync(Cue::Start);
             let r = Recorder::start();
@@ -322,9 +328,13 @@ impl Controller {
             Ok(text) => {
                 log::info!("Transcribed: {text}");
                 let (text, glossary) = self.apply_vocab(text, &cfg);
-                let text = match self.caret_context(&cfg) {
-                    Some(ctx) => self.insert_in_context(text, seconds, &ctx, glossary.as_deref(), &cfg),
-                    None => self.maybe_polish(text, seconds, glossary.as_deref(), &cfg),
+                let text = if translate {
+                    self.translate(text, glossary.as_deref(), &cfg)
+                } else {
+                    match self.caret_context(&cfg) {
+                        Some(ctx) => self.insert_in_context(text, seconds, &ctx, glossary.as_deref(), &cfg),
+                        None => self.maybe_polish(text, seconds, glossary.as_deref(), &cfg),
+                    }
                 };
                 if task.canceled() {
                     return;
@@ -444,6 +454,23 @@ impl Controller {
             Ok(_) => text,
             Err(e) => {
                 log::warn!("Polish skipped: {e}");
+                text
+            }
+        }
+    }
+
+    /// 翻译输入：不论长短都翻译（短句也要换成目标语言）；失败时提示并输出原文
+    fn translate(&self, text: String, glossary: Option<&str>, cfg: &Config) -> String {
+        overlay::set(Mode::Polishing);
+        match llm::translate_text(&text, glossary, cfg) {
+            Ok(t) if !t.is_empty() => {
+                log::info!("Translated ({}): {t}", cfg.translate_to);
+                t
+            }
+            Ok(_) => text,
+            Err(e) => {
+                log::warn!("Translation failed: {e}");
+                self.notify_error(&trf!("翻译失败，已输出原文：{e}", "Translation failed, typed the original: {e}", "翻訳に失敗したため原文を入力しました: {e}"));
                 text
             }
         }

@@ -16,6 +16,10 @@ pub struct Config {
     pub revise_stop_hotkey: String,
     /// 取消本次任务（录音或识别中）；只在任务进行中拦截该键
     pub cancel_hotkey: String,
+    /// 翻译输入：单击开始录音，再单击结束，说完翻译成 translate_to 再输入；留空不启用
+    pub translate_hotkey: String,
+    /// 翻译输入的目标语言：en / ja / ko / zh / zh-Hant，也可以直接填语言名
+    pub translate_to: String,
     /// whisper 模型 id，见 models::MODELS
     pub model: String,
     /// 模型目录；留空用默认目录
@@ -62,6 +66,15 @@ pub struct Config {
     pub insert_prompt: String,
 }
 
+/// 默认的翻译输入快捷键：日文键盘用空格左边的「無変換」（与主快捷键「変換」左右对称）；其他键盘不预设
+fn default_translate_hotkey() -> &'static str {
+    if !cfg!(target_os = "macos") && crate::platform::jis_keyboard() {
+        "nonconvert"
+    } else {
+        ""
+    }
+}
+
 /// 默认的主快捷键：选一个紧挨空格、大拇指够得着、平时又很少单独按的键。
 /// 美式等键盘：右 Alt（macOS 上是右 Option）。日文键盘（JIS）上往往没有这两个键：
 /// Windows 用空格右边的「変換」（输入日文时变换候选都按空格，很少单独按它；「カタカナ ひらがな」「半角/全角」
@@ -83,6 +96,8 @@ impl Default for Config {
             revise_hotkey: format!("{}+space", default_hotkey()),
             revise_stop_hotkey: default_hotkey().into(),
             cancel_hotkey: "esc".into(),
+            translate_hotkey: default_translate_hotkey().into(),
+            translate_to: "en".into(),
             model: "sense-voice".into(),
             model_dir: String::new(),
             language: "auto".into(),

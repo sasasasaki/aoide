@@ -184,6 +184,16 @@ fn save_settings(
     if cancel == keys::Hotkey::parse(&config.hotkey) || cancel == keys::Hotkey::parse(&config.revise_hotkey) {
         return Err(i18n::tr("取消快捷键不能与语音输入 / 语音修订快捷键相同", "The cancel hotkey must differ from the dictation and voice edit hotkeys", "キャンセルのショートカットキーは、音声入力・音声修正のショートカットキーとは別のキーにしてください").into());
     }
+    // 翻译输入快捷键可以留空（不启用）
+    if !config.translate_hotkey.trim().is_empty() {
+        let Some(translate) = keys::Hotkey::parse(&config.translate_hotkey) else {
+            let hk = &config.translate_hotkey;
+            return Err(trf!("无法识别的快捷键：{hk}", "Unrecognized hotkey: {hk}", "認識できないショートカットキーです: {hk}"));
+        };
+        if [&config.hotkey, &config.revise_hotkey, &config.cancel_hotkey].iter().any(|hk| keys::Hotkey::parse(hk).as_ref() == Some(&translate)) {
+            return Err(i18n::tr("翻译输入快捷键不能与语音输入 / 语音修订 / 取消快捷键相同", "The translate hotkey must differ from the dictation, voice edit and cancel hotkeys", "翻訳入力のショートカットキーは、音声入力・音声修正・キャンセルのショートカットキーとは別のキーにしてください").into());
+        }
+    }
     if !config.polish_prompt.trim().is_empty() && !config.polish_prompt.contains("{text}") {
         return Err(i18n::tr("润色提示词必须包含 {text}（转写结果）", "The polish prompt must contain {text} (the transcript)", "整形プロンプトには {text}（文字起こし結果）を含めてください").into());
     }
